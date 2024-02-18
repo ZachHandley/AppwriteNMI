@@ -1,0 +1,21 @@
+{
+  "projectId": "65d124b45999b29c8d21",
+  "projectName": "Appwrite NMI",
+  "functions": [
+    {
+      "$id": "65d1250a90239637444a",
+      "name": "NMIHandler",
+      "runtime": "bun-1.0",
+      "execute": [],
+      "events": [],
+      "schedule": "",
+      "timeout": 120,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.ts",
+      "commands": "bun install",
+      "ignore": ["node_modules", ".npm"],
+      "path": "functions/NMIHandler"
+    }
+  ]
+}
