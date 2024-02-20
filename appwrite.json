@@ -16,6 +16,21 @@
       "commands": "bun install",
       "ignore": ["node_modules", ".npm"],
       "path": "functions/NMIHandler"
+    },
+    {
+      "$id": "65d52bb6a0a7a240ec78",
+      "name": "AddToVaultOnUserCreate",
+      "runtime": "bun-1.0",
+      "execute": [],
+      "events": ["users.*.create", "users.*.update"],
+      "schedule": "",
+      "timeout": 15,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.ts",
+      "commands": "bun install",
+      "ignore": ["node_modules", ".npm"],
+      "path": "functions/AddToVaultOnUserCreate"
     }
   ]
 }
