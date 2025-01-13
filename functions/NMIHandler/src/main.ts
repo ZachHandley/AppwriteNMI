@@ -99,7 +99,30 @@ export default async ({ req, res, log, error }: any) => {
           case "deleteCustomer":
             response = await nmi.customerVault.deleteCustomer(requestData.data);
             break;
-          // Add other customer vault actions as needed
+          case "initiateTransaction":
+            response = await nmi.customerVault.initiateTransaction(requestData.data);
+            break;
+          case "validateCustomer":
+            response = await nmi.customerVault.validateCustomer(requestData.data);
+            break;
+          case "authorizeCustomer":
+            response = await nmi.customerVault.authorizeCustomer(requestData.data);
+            break;
+          case "creditTransaction":
+            response = await nmi.customerVault.creditTransaction(requestData.data);
+            break;
+          case "offlineTransaction":
+            response = await nmi.customerVault.offlineTransaction(requestData.data);
+            break;
+          case "addBilling":
+            response = await nmi.customerVault.addBilling(requestData.data);
+            break;
+          case "updateBilling":
+            response = await nmi.customerVault.updateBilling(requestData.data);
+            break;
+          case "deleteBilling":
+            response = await nmi.customerVault.deleteBilling(requestData.data);
+            break;
           default:
             return res.json({
               status: 500,
