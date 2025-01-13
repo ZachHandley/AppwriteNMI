@@ -5,6 +5,7 @@ import {
   RecurringResponseSchema,
   InvoiceResponseSchema,
   CustomerVaultResponseSchema,
+  QueryResponseSchema,
 } from "znmi";
 import { z } from "zod";
 
@@ -33,42 +34,27 @@ const CustomerVaultResponseType = CustomerVaultResponseSchema.extend({
   usersAffected: z.array(z.string()).optional(),
 }).shape;
 
+const QueryResponseType = QueryResponseSchema.extend({
+  initiatedBy: z.string().optional(),
+  usersAffected: z.array(z.string()).optional(),
+  timestamp: z.string().optional(),
+  status: z.string().optional(),
+  error: z.any().optional(),
+}).shape;
+
 const logType = ProductResponseSchema.merge(TransactionResponseSchema)
   .merge(RecurringResponseSchema)
   .merge(InvoiceResponseSchema)
   .merge(CustomerVaultResponseSchema)
+  .merge(QueryResponseSchema)
   .extend({
     initiatedBy: z.string().optional(),
     usersAffected: z.array(z.string()).optional(),
+    timestamp: z.string().optional(),
+    collectionSource: z.string().optional(),
+    status: z.string().optional(),
+    error: z.any().optional(),
   }).shape;
-
-export const initCollections = async (
-  db: Databases,
-  database_name: string,
-  log: any,
-  error: any
-) => {
-  const databases = await db.list([Query.equal("name", database_name)]);
-  if (databases.total === 0) {
-    // We need to create the database and collections
-    const database = await db.create(ID.unique(), database_name, true);
-    const createdCollections = await createCollections(db, database.$id, log);
-    const toReturn = {
-      database: database.$id,
-      collections: createdCollections,
-    };
-    return toReturn;
-  } else {
-    // We need to check the collections
-    const database = databases.databases[0];
-    const createdCollections = await createCollections(db, database.$id, log);
-    const toReturn = {
-      database: database.$id,
-      collections: createdCollections,
-    };
-    return toReturn;
-  }
-};
 
 const createAppwriteAttributesFromZod = async (
   log: any,
@@ -148,7 +134,6 @@ const createAppwriteAttributesFromZod = async (
           undefined,
           false
         );
-        log(`Created enum attribute for key ${key}`);
       } else if (unwrappedField instanceof z.ZodArray) {
         const arrayType = unwrappedField.element;
         log(`Creating array attribute for key ${key}`);
@@ -196,182 +181,25 @@ const createAppwriteAttributesFromZod = async (
             undefined,
             true
           );
-        } else if (arrayType instanceof z.ZodLiteral) {
+        } else if (arrayType instanceof z.ZodEnum) {
           log(`Creating enum array attribute for key ${key}`);
           await db.createEnumAttribute(
             databaseId,
             collectionId,
             key,
-            [arrayType.value.map((option: any) => option.toString())],
+            arrayType.options.map((option: any) => option.toString()),
             !field.isOptional(),
             undefined,
             true
           );
         }
-        log(`Created array attribute for key ${key}`);
-        // Note: Appwrite might not support complex nested arrays directly, so you might need to serialize them or handle them as strings.
-      } else if (unwrappedField instanceof z.ZodObject) {
-        // For ZodObject, consider serializing to a string or handling as a map if supported.
-      } else if (
-        unwrappedField instanceof z.ZodUnion ||
-        unwrappedField instanceof z.ZodDiscriminatedUnion
-      ) {
-        // Union types might need to be handled as strings or using specific logic to map to Appwrite's attribute types.
-      } else if (unwrappedField instanceof z.ZodIntersection) {
-        // Intersection types might need custom handling, potentially serializing to a string.
-      } else if (unwrappedField instanceof z.ZodTuple) {
-        // Tuples might be handled similarly to arrays or serialized to strings.
-      } else if (unwrappedField instanceof z.ZodRecord) {
-        // Records might be handled as maps if supported, or serialized to strings.
-      } else if (unwrappedField instanceof z.ZodLiteral) {
-        // Literals might be handled as specific constant values or enums.
-      } else if (
-        unwrappedField instanceof z.ZodNull ||
-        unwrappedField instanceof z.ZodUndefined
-      ) {
-        // These types might be handled specifically based on your application's needs, potentially as optional attributes.
       }
-      // Add more Zod types as necessary
     } catch (error) {
       log(`Failed to create attribute for key ${key}:`, error);
       log(`Attribute stringified: ${JSON.stringify(field, null, 4)}`);
     }
   }
 };
-
-async function createAppwriteAttributeFromZod(
-  db: Databases,
-  databaseId: string,
-  collectionId: string,
-  attributeName: string,
-  attributeSchema: z.ZodType<any>,
-  log: any
-) {
-  log(`Creating attribute for ${attributeName}`);
-  try {
-    let unwrappedField = attributeSchema;
-    if (attributeSchema instanceof z.ZodOptional) {
-      unwrappedField = attributeSchema.unwrap();
-    }
-    if (
-      unwrappedField instanceof z.ZodString ||
-      unwrappedField instanceof z.ZodUnion
-    ) {
-      log(`Creating string attribute for ${attributeName}`);
-      await db.createStringAttribute(
-        databaseId,
-        collectionId,
-        attributeName,
-        255,
-        !attributeSchema.isOptional(),
-        undefined,
-        false,
-        false
-      );
-    } else if (unwrappedField instanceof z.ZodNumber) {
-      log(`Creating number attribute for ${attributeName}`);
-      await db.createFloatAttribute(
-        databaseId,
-        collectionId,
-        attributeName,
-        !attributeSchema.isOptional(),
-        undefined,
-        undefined,
-        undefined,
-        false
-      );
-    } else if (unwrappedField instanceof z.ZodBoolean) {
-      log(`Creating boolean attribute for ${attributeName}`);
-      await db.createBooleanAttribute(
-        databaseId,
-        collectionId,
-        attributeName,
-        !attributeSchema.isOptional(),
-        undefined,
-        false
-      );
-    } else if (unwrappedField instanceof z.ZodDate) {
-      log(`Creating date attribute for ${attributeName}`);
-      await db.createDatetimeAttribute(
-        databaseId,
-        collectionId,
-        attributeName,
-        !attributeSchema.isOptional(),
-        undefined,
-        false
-      );
-    } else if (unwrappedField instanceof z.ZodEnum) {
-      log(`Creating enum attribute for ${attributeName}`);
-      const elements = unwrappedField.options
-        .map((option) => option.toString())
-        .filter((option) => option !== "");
-      await db.createEnumAttribute(
-        databaseId,
-        collectionId,
-        attributeName,
-        elements,
-        !attributeSchema.isOptional() &&
-          elements.some((element) => element !== ""),
-        undefined,
-        false
-      );
-    } else if (unwrappedField instanceof z.ZodArray) {
-      const arrayType = unwrappedField.element;
-      log(`Creating array attribute for ${attributeName}`);
-      if (arrayType instanceof z.ZodString) {
-        log(`Creating string array attribute for ${attributeName}`);
-        await db.createStringAttribute(
-          databaseId,
-          collectionId,
-          attributeName,
-          255,
-          !attributeSchema.isOptional(),
-          undefined,
-          true,
-          false
-        );
-      } else if (arrayType instanceof z.ZodNumber) {
-        log(`Creating number array attribute for ${attributeName}`);
-        await db.createFloatAttribute(
-          databaseId,
-          collectionId,
-          attributeName,
-          !attributeSchema.isOptional(),
-          undefined,
-          undefined,
-          undefined,
-          true
-        );
-      } else if (arrayType instanceof z.ZodBoolean) {
-        log(`Creating boolean array attribute for ${attributeName}`);
-        await db.createBooleanAttribute(
-          databaseId,
-          collectionId,
-          attributeName,
-          !attributeSchema.isOptional(),
-          undefined,
-          true
-        );
-      } else if (arrayType instanceof z.ZodDate) {
-        log(`Creating date array attribute for ${attributeName}`);
-        await db.createDatetimeAttribute(
-          databaseId,
-          collectionId,
-          attributeName,
-          !attributeSchema.isOptional(),
-          undefined,
-          true
-        );
-      }
-      // Note: Appwrite might not support complex nested arrays directly, so you might need to serialize them or handle them as strings.
-    } else {
-      log(`Unsupported Zod type for attribute: ${attributeName}`);
-    }
-  } catch (error) {
-    log(`Failed to create attribute for ${attributeName}:`, error);
-    log(`Attribute stringified: ${JSON.stringify(attributeSchema, null, 4)}`);
-  }
-}
 
 export const createCollections = async (
   db: Databases,
@@ -384,7 +212,6 @@ export const createCollections = async (
   );
   let allCollections: { [key: string]: string } = {};
 
-  // Define a helper function to check and create collections
   const checkAndCreateCollection = async (
     collectionName: string,
     responseType: any
@@ -397,7 +224,7 @@ export const createCollections = async (
         collectionName,
         [Permission.read("any")]
       );
-      allCollections[collectionName.toLowerCase()] = collection.$id;
+      allCollections[collectionName.toLowerCase().replace(" ", "")] = collection.$id;
       await createAppwriteAttributesFromZod(
         log,
         db,
@@ -406,51 +233,66 @@ export const createCollections = async (
         responseType
       );
     } else {
-      log(`Collection already exists: ${collectionName}`);
+      log(`Collection exists: ${collectionName}`);
       const collectionId = existingCollectionsResult.collections.find(
         (c) => c.name === collectionName
       )!.$id;
-      allCollections[collectionName.toLowerCase()] = collectionId;
-      const collectionAttributesResult = await db.listAttributes(
-        database_id,
-        collectionId
-      );
-      const existingAttributeNames = collectionAttributesResult; // Assuming this returns a string array of attribute names
-
-      // Extract attribute names from the Zod schema
-      const responseAttributeNames = Object.keys(responseType.shape);
-
-      // Determine which attributes are missing
-      const missingAttributes = responseAttributeNames.filter(
-        (name) => !existingAttributeNames.attributes.includes(name)
-      );
-
-      // Create missing attributes
-      for (const attributeName of missingAttributes) {
-        log(
-          `Creating missing attribute: ${attributeName} for collection: ${collectionName}`
-        );
-        // Extract the Zod schema for the attribute
-        const attributeSchema = responseType.shape[attributeName];
-        await createAppwriteAttributeFromZod(
-          db,
-          database_id,
-          collectionId,
-          attributeName,
-          attributeSchema,
-          log
-        );
+      allCollections[collectionName.toLowerCase().replace(" ", "")] = collectionId;
+      
+      // Check for missing attributes
+      const existingAttributes = await db.listAttributes(database_id, collectionId);
+      const existingAttributeNames = existingAttributes.attributes.map(attr => attr.key);
+      
+      // Create any missing attributes
+      for (const [key, schema] of Object.entries(responseType)) {
+        if (!existingAttributeNames.includes(key)) {
+          log(`Creating missing attribute: ${key}`);
+          await createAppwriteAttributesFromZod(
+            log,
+            db,
+            database_id,
+            collectionId,
+            { [key]: schema }
+          );
+        }
       }
     }
   };
 
-  // Use the helper function for each collection
+  // Create all collections
   await checkAndCreateCollection("Products", ProductResponseType);
   await checkAndCreateCollection("Transactions", TransactionResponseType);
   await checkAndCreateCollection("Subscriptions", RecurringResponseType);
   await checkAndCreateCollection("Invoices", InvoiceResponseType);
   await checkAndCreateCollection("Customer Vault", CustomerVaultResponseType);
+  await checkAndCreateCollection("Queries", QueryResponseType);
   await checkAndCreateCollection("Gateway Logs", logType);
 
   return allCollections;
+};
+
+export const initCollections = async (
+  db: Databases,
+  database_name: string,
+  log: any,
+  error: any
+) => {
+  const databases = await db.list([Query.equal("name", database_name)]);
+  if (databases.total === 0) {
+    // Create database and collections
+    const database = await db.create(ID.unique(), database_name, true);
+    const createdCollections = await createCollections(db, database.$id, log);
+    return {
+      database: database.$id,
+      collections: createdCollections,
+    };
+  } else {
+    // Check existing collections
+    const database = databases.databases[0];
+    const createdCollections = await createCollections(db, database.$id, log);
+    return {
+      database: database.$id,
+      collections: createdCollections,
+    };
+  }
 };

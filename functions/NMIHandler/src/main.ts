@@ -1,276 +1,259 @@
 import { Client, Databases, ID, Query, Permission } from "node-appwrite";
 import { initCollections } from "./methods/initCollections";
 import { ZNMI } from "znmi";
-import { requestInfo } from "./types";
-import { addLogToDB } from "./methods/logsHandler";
-import { z } from "zod";
-
-type RequestInfo = z.infer<typeof requestInfo>;
+import { requestInfo, RequestCategory, RequestInfo } from "./types";
+import { createLog } from "./methods/logsHandler";
 
 const SHOULD_CHECK_DB = true;
 const NMI_DB = "NMI";
-// REPLACE THIS WITH YOUR OWN SECURITY KEY WHEN NOT TESTING
-// THIS IS NMI'S DEFAULT TESTING SECURITY KEY
-// const NMI_SECURITY_KEY = Bun.env["NMI_SECURITY_KEY"];
-const NMI_SECURITY_KEY = "6457Thfj624V5r7WUwc5v6a68Zsd6YEm";
+const NMI_SECURITY_KEY = Bun.env["NMI_SECURITY_KEY"] ?? "6457Thfj624V5r7WUwc5v6a68Zsd6YEm";
 
 const createNmi = async (security_key: string) => {
   return new ZNMI(security_key);
 };
 
-/**
- * Creates a log in the database in the specified collection and, additionally, in the Gateway Logs collection
- * @param db The database object
- * @param db_id The ID of the database
- * @param coll_id The ID of the collection
- * @param all_coll_id The ID of the Gateway Logs collection
- * @param logData The data to log
- * @param initiatedBy The user who initiated the log
- * @param log The log function
- * @param error The error function
- */
-const createLog = async (
-  db: Databases,
-  db_id: string,
-  coll_id: string,
-  all_coll_id: string,
-  logData: any,
-  initiatedBy: string,
-  log: any,
-  error: any
-) => {
-  try {
-    log("Adding logs to DB");
-    logData.initiatedBy = initiatedBy;
-    await addLogToDB(db, db_id, coll_id, logData, log, error);
-    await addLogToDB(db, db_id, all_coll_id, logData, log, error);
-  } catch (e) {
-    error("Error adding logs to DB");
-    error(e);
-  }
-};
-
-// This is your Appwrite function
-// It's executed each time we get a request
 export default async ({ req, res, log, error }: any) => {
-  // Why not try the Appwrite SDK?
-  const client = new Client()
-    .setEndpoint("https://cloud.appwrite.io/v1")
-    // @ts-ignore
-    .setProject(Bun.env["APPWRITE_FUNCTION_PROJECT_ID"])
-    // @ts-ignore
-    .setKey(Bun.env["APPWRITE_API_KEY"]);
-  const db = new Databases(client);
-  const nmi = await createNmi(NMI_SECURITY_KEY);
-  const allDbCollInfo = await initCollections(db, NMI_DB, log, error);
-  log("Database initialized");
-  let requestData: RequestInfo;
-  if (typeof req.body !== "object") {
-    requestData = requestInfo.parse(JSON.parse(req.body));
-  } else {
-    requestData = requestInfo.parse(req.body);
-  }
-  log("Request data parsed");
-  let response: any;
-  switch (requestData.requestCategory) {
-    case "transaction":
-      switch (requestData.requestAction) {
-        case "create":
-          response = await nmi.transactions.createTransaction(requestData.data);
-          await createLog(
-            db,
-            allDbCollInfo.database,
-            allDbCollInfo.collections.transactions,
-            allDbCollInfo.collections.allLogs,
-            requestData.data,
-            requestData.initiatedBy,
-            log,
-            error
-          );
-          return res.json(response);
-        case "update":
-          response = await nmi.transactions.updateTransaction(requestData.data);
-          await createLog(
-            db,
-            allDbCollInfo.database,
-            allDbCollInfo.collections.transactions,
-            allDbCollInfo.collections.allLogs,
-            requestData.data,
-            requestData.initiatedBy,
-            log,
-            error
-          );
-          return res.json(response);
-        case "validate":
-          response = await nmi.transactions.validateTransaction(
-            requestData.data
-          );
-          await createLog(
-            db,
-            allDbCollInfo.database,
-            allDbCollInfo.collections.transactions,
-            allDbCollInfo.collections.allLogs,
-            requestData.data,
-            requestData.initiatedBy,
-            log,
-            error
-          );
-          return res.json(response);
-        case "authorize":
-          response = await nmi.transactions.authorizeTransaction(
-            requestData.data
-          );
-          return res.json(response);
-        case "capture":
-          response = await nmi.transactions.captureTransaction(
-            requestData.data
-          );
-          return res.json(response);
-        case "refund":
-          response = await nmi.transactions.refundTransaction(requestData.data);
-          return res.json(response);
-        case "void":
-          response = await nmi.transactions.voidTransaction(requestData.data);
-          return res.json(response);
-        default:
-          return res.json({
-            status: 500,
-            message: "Invalid request action for transaction category",
-          });
-      }
-    case "subscription":
-      switch (requestData.requestAction) {
-        case "addPlan":
-          response = await nmi.recurring.addRecurringPlan(requestData.data);
-          return res.json(response);
-        case "editPlan":
-          response = await nmi.recurring.editRecurringPlan(requestData.data);
-          return res.json(response);
-        case "addCustomByAch":
-          response = await nmi.recurring.addCustomSubscriptionByAch(
-            requestData.data
-          );
-          return res.json(response);
-        case "addCustomByCreditCard":
-          response = await nmi.recurring.addCustomSubscriptionByCc(
-            requestData.data
-          );
-          return res.json(response);
-        case "updateSubscription":
-          response = await nmi.recurring.updateSubscription(requestData.data);
-          return res.json(response);
-        case "deleteSubscription":
-          response = await nmi.recurring.deleteSubscription(requestData.data);
-          return res.json(response);
-        default:
-          return res.json({
-            status: 500,
-            message: "Invalid request action for subscription category",
-          });
-      }
-    case "customerVault":
-      switch (requestData.requestAction) {
-        case "addCustomer":
-          response = await nmi.customerVault.addCustomer(requestData.data);
-          return res.json(response);
-        case "updateCustomer":
-          response = await nmi.customerVault.updateCustomer(requestData.data);
-          return res.json(response);
-        case "initiateTransaction":
-          response = await nmi.customerVault.initiateCustomerVaultTransaction(
-            requestData.data
-          );
-          return res.json(response);
-        case "validateCustomer":
-          response = await nmi.customerVault.validateCustomerByVaultId(
-            requestData.data
-          );
-          return res.json(response);
-        case "authorizeCustomer":
-          response = await nmi.customerVault.authorizeCustomerByVaultId(
-            requestData.data
-          );
-          return res.json(response);
-        case "creditTransaction":
-          response = await nmi.customerVault.creditTransactionByVaultId(
-            requestData.data
-          );
-          return res.json(response);
-        case "offlineTransaction":
-          response = await nmi.customerVault.offlineTransactionByVaultId(
-            requestData.data
-          );
-          return res.json(response);
-        case "addBilling":
-          response = await nmi.customerVault.addBillingToCustomer(
-            requestData.data
-          );
-          return res.json(response);
-        case "updateBilling":
-          response = await nmi.customerVault.updateBillingForCustomer(
-            requestData.data
-          );
-          return res.json(response);
-        case "deleteBilling":
-          response = await nmi.customerVault.deleteBillingForCustomer(
-            requestData.data
-          );
-          return res.json(response);
-        case "deleteCustomer":
-          response = await nmi.customerVault.deleteCustomerRecord(
-            requestData.data
-          );
-          return res.json(response);
-        default:
-          return res.json({
-            status: 500,
-            message: "Invalid request action for customerVault category",
-          });
-      }
-    case "productManager":
-      switch (requestData.requestAction) {
-        case "addProduct":
-          response = await nmi.products.addProduct(requestData.data);
-          return res.json(response);
-        case "updateProduct":
-          response = await nmi.products.updateProduct(requestData.data);
-          return res.json(response);
-        case "deleteProduct":
-          response = await nmi.products.deleteProduct(requestData.data);
-          return res.json(response);
-        default:
-          return res.json({
-            status: 500,
-            message: "Invalid request action for productManager category",
-          });
-      }
-      break;
-    case "invoice":
-      switch (requestData.requestAction) {
-        case "create":
-          response = await nmi.invoices.createInvoice(requestData.data);
-          return res.json(response);
-        case "update":
-          response = await nmi.invoices.updateInvoice(requestData.data);
-          return res.json(response);
-        case "close":
-          response = await nmi.invoices.closeInvoice(requestData.data);
-          return res.json(response);
-        case "send":
-          response = await nmi.invoices.sendInvoice(requestData.data);
-          return res.json(response);
-        default:
-          return res.json({
-            status: 500,
-            message: "Invalid request action for invoice category",
-          });
-      }
-    default:
-      return res.json({
-        status: 500,
-        message: "Invalid request category",
-      });
-  }
+  try {
+    const client = new Client()
+      .setEndpoint("https://cloud.appwrite.io/v1")
+      // @ts-ignore
+      .setProject(Bun.env["APPWRITE_FUNCTION_PROJECT_ID"])
+      // @ts-ignore
+      .setKey(Bun.env["APPWRITE_API_KEY"]);
+    
+    const db = new Databases(client);
+    const nmi = await createNmi(NMI_SECURITY_KEY);
+    const allDbCollInfo = await initCollections(db, NMI_DB, log, error);
+    log("Database initialized");
 
-  return res.empty();
+    let requestData: RequestInfo;
+    try {
+      const parsedBody = typeof req.body === "object" ? req.body : JSON.parse(req.body);
+      requestData = requestInfo.parse(parsedBody);
+      log("Request data parsed successfully");
+    } catch (e) {
+      error("Failed to parse request data:", e);
+      return res.json({
+        status: 400,
+        message: "Invalid request format",
+        error: String(e)
+      }, 400);
+    }
+
+    let response: any;
+  
+    switch (requestData.requestCategory) {
+      case RequestCategory.Transaction:
+        switch (requestData.requestAction) {
+          case "create":
+            response = await nmi.transaction.create(requestData.data);
+            break;
+          case "authorize":
+            response = await nmi.transaction.authorize(requestData.data);
+            break;
+          case "validate":
+            response = await nmi.transaction.validate(requestData.data);
+            break;
+          case "capture":
+            response = await nmi.transaction.capture(requestData.data);
+            break;
+          case "void":
+            response = await nmi.transaction.void(requestData.data);
+            break;
+          case "refund":
+            response = await nmi.transaction.refund(requestData.data);
+            break;
+          case "update":
+            response = await nmi.transaction.update(requestData.data);
+            break;
+          default:
+            return res.json({
+              status: 500,
+              message: "Invalid transaction action",
+            });
+        }
+        
+        await createLog(
+          db,
+          allDbCollInfo.database,
+          allDbCollInfo.collections.transactions,
+          allDbCollInfo.collections.allLogs,
+          {
+            ...requestData.data,
+            response: response,
+          },
+          requestData.initiatedBy,
+          log,
+          error
+        );
+        return res.json(response);
+
+      case RequestCategory.CustomerVault:
+        switch (requestData.requestAction) {
+          case "addCustomer":
+            response = await nmi.customerVault.addCustomer(requestData.data);
+            break;
+          case "updateCustomer":
+            response = await nmi.customerVault.updateCustomer(requestData.data);
+            break;
+          case "deleteCustomer":
+            response = await nmi.customerVault.deleteCustomer(requestData.data);
+            break;
+          // Add other customer vault actions as needed
+          default:
+            return res.json({
+              status: 500,
+              message: "Invalid customer vault action",
+            });
+        }
+        
+        await createLog(
+          db,
+          allDbCollInfo.database,
+          allDbCollInfo.collections.customervault,
+          allDbCollInfo.collections.allLogs,
+          {
+            ...requestData.data,
+            response: response,
+          },
+          requestData.initiatedBy,
+          log,
+          error
+        );
+        return res.json(response);
+
+      case RequestCategory.Query:
+        switch (requestData.requestAction) {
+          case "transaction":
+            response = await nmi.query.queryTransaction(requestData.data);
+            break;
+
+          case "receipt":
+            response = await nmi.query.queryReceipt(requestData.data);
+            break;
+
+          case "profile":
+            response = await nmi.query.queryProfile(requestData.data?.includeProcessorDetails);
+            break;
+
+          case "transactionsByDate":
+            response = await nmi.query.queryTransactionsByDate(
+              requestData.data.startDate,
+              requestData.data.endDate,
+              requestData.data.options
+            );
+            break;
+
+          case "customerVault":
+            response = await nmi.query.queryCustomerVault(
+              requestData.data?.customerVaultId,
+              requestData.data?.dateRange,
+              requestData.data?.options
+            );
+            break;
+
+          case "recurring":
+            response = await nmi.query.queryRecurring(
+              requestData.data?.subscriptionId,
+              requestData.data?.options
+            );
+            break;
+
+          case "recurringPlans":
+            response = await nmi.query.queryRecurringPlans(requestData.data?.options);
+            break;
+
+          case "invoices":
+            response = await nmi.query.queryInvoices(
+              requestData.data?.invoiceId,
+              requestData.data?.status,
+              requestData.data?.options
+            );
+            break;
+
+          case "transactionsBySource":
+            response = await nmi.query.queryTransactionsBySource(
+              requestData.data.sources,
+              requestData.data.options
+            );
+            break;
+
+          case "transactionsByCondition":
+            response = await nmi.query.queryTransactionsByCondition(
+              requestData.data.conditions,
+              requestData.data.options
+            );
+            break;
+
+          case "transactionsByActionType":
+            response = await nmi.query.queryTransactionsByActionType(
+              requestData.data.actionTypes,
+              requestData.data.options
+            );
+            break;
+
+          case "transactionsByCard":
+            response = await nmi.query.queryTransactionsByCard(
+              requestData.data.cardNumber,
+              requestData.data.options
+            );
+            break;
+
+          case "transactionsWithPagination":
+            response = await nmi.query.queryTransactionsWithPagination(
+              requestData.data.pageNumber,
+              requestData.data.resultLimit,
+              requestData.data.resultOrder,
+              requestData.data.options
+            );
+            break;
+
+          case "gatewayProcessors":
+            response = await nmi.query.queryGatewayProcessors(requestData.data?.options);
+            break;
+
+          case "accountUpdater":
+            response = await nmi.query.queryAccountUpdater(requestData.data?.options);
+            break;
+
+          case "testModeStatus":
+            response = await nmi.query.queryTestModeStatus(requestData.data?.options);
+            break;
+
+          default:
+            return res.json({
+              status: 500,
+              message: "Invalid query action",
+            });
+        }
+
+        await createLog(
+          db,
+          allDbCollInfo.database,
+          allDbCollInfo.collections.queries,
+          allDbCollInfo.collections.allLogs,
+          {
+            ...requestData.data,
+            response: response,
+          },
+          requestData.initiatedBy,
+          log,
+          error
+        );
+        return res.json(response);
+
+      default:
+        return res.json({
+          status: 500,
+          message: "Invalid request category",
+        });
+    }
+  } catch (e) {
+    error("Unexpected error:", e);
+    return res.json({
+      status: 500,
+      message: "Internal server error",
+      error: String(e)
+    }, 500);
+  }
 };
